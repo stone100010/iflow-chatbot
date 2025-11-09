@@ -1,0 +1,1 @@
+ALTER TABLE "Workspace" ADD COLUMN "isNameCustomized" boolean DEFAULT false NOT NULL;
