@@ -14,6 +14,7 @@ import type {
 import { createIFlowClient } from "./client";
 import { ensureWorkspace } from "./workspace";
 import { getIFlowMessagesByWorkspaceId } from "@/lib/db/queries";
+import { createLogger } from "@/lib/logger";
 
 /**
  * 会话管理器类
@@ -24,6 +25,12 @@ export class IFlowSessionManager {
    * Key: `${userId}:${workspaceId}`
    */
   private sessions: Map<string, IFlowSession> = new Map();
+
+  /**
+   * 最大会话数限制
+   * 防止内存无限增长
+   */
+  private readonly MAX_SESSIONS = 1000;
 
   /**
    * 会话超时时间（毫秒）
@@ -38,9 +45,29 @@ export class IFlowSessionManager {
   private readonly CLEANUP_INTERVAL = 5 * 60 * 1000;
 
   /**
+   * 历史消息上下文配置
+   */
+  private readonly MAX_CONTEXT_MESSAGES = 20; // 最多保留最近 20 条消息
+  private readonly MAX_MESSAGE_LENGTH = 1000; // 每条消息最大 1000 字符
+
+  /**
    * 清理定时器
    */
   private cleanupTimer?: NodeJS.Timeout;
+
+  /**
+   * 会话统计信息
+   */
+  private stats = {
+    totalCreated: 0,
+    totalDestroyed: 0,
+    evictionCount: 0,
+  };
+
+  /**
+   * Logger 实例
+   */
+  private logger = createLogger("SessionManager");
 
   constructor() {
     // 启动自动清理定时器
@@ -52,6 +79,7 @@ export class IFlowSessionManager {
    *
    * 如果会话存在且配置未改变，则复用现有会话
    * 如果配置改变，则销毁旧会话并创建新会话
+   * 如果会话数达到上限，则淘汰最不活跃的会话
    *
    * @param userId - 用户 ID
    * @param workspaceId - 工作区 ID
@@ -80,10 +108,18 @@ export class IFlowSessionManager {
       }
 
       // 配置改变，销毁旧会话
-      console.log(
-        `[SessionManager] Configuration changed for ${sessionKey}, destroying old session`
+      this.logger.info(
+        `Configuration changed for ${sessionKey}, destroying old session`
       );
       await this.destroySession(sessionKey);
+    }
+
+    // 检查会话数限制，如果达到上限则淘汰最老的会话
+    if (this.sessions.size >= this.MAX_SESSIONS) {
+      this.logger.warn(
+        `Session limit reached (${this.MAX_SESSIONS}), evicting oldest session`
+      );
+      await this.evictOldestSession();
     }
 
     // 创建新会话
@@ -105,50 +141,57 @@ export class IFlowSessionManager {
   ): Promise<IFlowSession> {
     const sessionKey = this.getSessionKey(userId, workspaceId);
 
-    console.log(
-      `[SessionManager] Creating new session for ${sessionKey} with model=${config.modelName}, permission=${config.permissionMode}`
+    this.logger.info(
+      `Creating new session for ${sessionKey} with model=${config.modelName}, permission=${config.permissionMode}`
     );
 
     // 确保工作区存在
     await ensureWorkspace(workspaceId, userId);
 
-    // 加载历史消息并构建上下文摘要
-    let contextPrompt: string | undefined;
+    // 加载历史消息并构建上下文
+    let historyContext: string | undefined;
     try {
       const historicalMessages = await getIFlowMessagesByWorkspaceId(workspaceId);
 
       if (historicalMessages && historicalMessages.length > 0) {
-        console.log(
-          `[SessionManager] Found ${historicalMessages.length} historical messages, building context...`
+        // 只保留最近的 N 条消息作为上下文
+        const recentMessages = historicalMessages.slice(-this.MAX_CONTEXT_MESSAGES);
+
+        this.logger.info(
+          `Found ${historicalMessages.length} historical messages, will use recent ${recentMessages.length} for first message`
         );
 
-        // 使用所有历史消息构建上下文
-        const conversationHistory = historicalMessages
+        // 构建历史对话重放文本 - 直接以对话形式重放，不加任何提示
+        // 这样AI会认为这些是真实发生的对话，而不是"别人告诉它的"
+        const conversationHistory = recentMessages
           .map((msg) => {
-            const role = msg.role === "user" ? "User" : "Assistant";
             const content = msg.content || "";
-            // 限制每条消息最大 1000 字符
+            // 限制每条消息最大长度
             const truncatedContent =
-              content.length > 1000
-                ? content.substring(0, 1000) + "..."
+              content.length > this.MAX_MESSAGE_LENGTH
+                ? content.substring(0, this.MAX_MESSAGE_LENGTH) + "..."
                 : content;
-            return `${role}: ${truncatedContent}`;
+
+            // 直接返回内容，不加 "用户:" "助手:" 标签
+            // SDK 会自然地理解这是对话流
+            return truncatedContent;
           })
           .join("\n\n");
 
-        contextPrompt = `[CONVERSATION HISTORY - This is a continued conversation. Below is the recent chat history for context:]\n\n${conversationHistory}\n\n[END OF HISTORY - Please continue the conversation naturally based on this context.]`;
+        // 直接使用历史内容，不加任何包装
+        historyContext = conversationHistory + "\n\n";
 
-        console.log(
-          `[SessionManager] Context prompt built (${contextPrompt.length} chars)`
+        this.logger.info(
+          `History context built (${historyContext.length} chars, ${recentMessages.length} messages)`
         );
       } else {
-        console.log(
-          `[SessionManager] No historical messages found for ${sessionKey}`
+        this.logger.info(
+          `No historical messages found for ${sessionKey}, starting fresh conversation`
         );
       }
     } catch (historyError) {
-      console.error(
-        `[SessionManager] Failed to load historical context for ${sessionKey}:`,
+      this.logger.error(
+        `Failed to load historical context for ${sessionKey}`,
         historyError
       );
       // 继续创建会话，即使历史加载失败
@@ -160,17 +203,17 @@ export class IFlowSessionManager {
       userId,
       modelName: config.modelName,
       permissionMode: config.permissionMode,
-      contextPrompt, // 传递上下文提示
+      // 不再通过 contextPrompt 传递历史
     };
 
     // 创建并连接 iFlow Client（createIFlowClient 内部已经调用 connect）
     let client: IFlowClient;
     try {
       client = await createIFlowClient(clientConfig);
-      console.log(`[SessionManager] iFlow Client connected for ${sessionKey}`);
+      this.logger.info(`iFlow Client connected for ${sessionKey}`);
     } catch (error) {
-      console.error(
-        `[SessionManager] Failed to create/connect iFlow Client for ${sessionKey}:`,
+      this.logger.error(
+        `Failed to create/connect iFlow Client for ${sessionKey}`,
         error
       );
       throw new Error(`Failed to connect to iFlow: ${error}`);
@@ -187,13 +230,18 @@ export class IFlowSessionManager {
       createdAt: new Date(),
       lastActivity: new Date(),
       messageCount: 0,
+      historyContext, // 保存历史上下文
+      isFirstMessage: true, // 标记为首次消息
     };
 
     // 存储会话
     this.sessions.set(sessionKey, session);
 
-    console.log(
-      `[SessionManager] Session created: ${session.id} for ${sessionKey}`
+    // 更新统计
+    this.stats.totalCreated++;
+
+    this.logger.info(
+      `Session created: ${session.id} for ${sessionKey} (total: ${this.sessions.size}/${this.MAX_SESSIONS})`
     );
 
     return session;
@@ -210,15 +258,15 @@ export class IFlowSessionManager {
       return;
     }
 
-    console.log(`[SessionManager] Destroying session ${session.id} (${sessionKey})`);
+    this.logger.info(`Destroying session ${session.id} (${sessionKey})`);
 
     try {
       // 断开 iFlow Client
       await session.client.disconnect();
-      console.log(`[SessionManager] iFlow Client disconnected for ${sessionKey}`);
+      this.logger.info(`iFlow Client disconnected for ${sessionKey}`);
     } catch (error) {
-      console.error(
-        `[SessionManager] Error disconnecting client for ${sessionKey}:`,
+      this.logger.error(
+        `Error disconnecting client for ${sessionKey}`,
         error
       );
     }
@@ -226,7 +274,10 @@ export class IFlowSessionManager {
     // 从 Map 中删除
     this.sessions.delete(sessionKey);
 
-    console.log(`[SessionManager] Session ${session.id} destroyed`);
+    // 更新统计
+    this.stats.totalDestroyed++;
+
+    this.logger.info(`Session ${session.id} destroyed (remaining: ${this.sessions.size})`);
   }
 
   /**
@@ -251,7 +302,7 @@ export class IFlowSessionManager {
     // 确保定时器不会阻止进程退出
     this.cleanupTimer.unref();
 
-    console.log("[SessionManager] Cleanup timer started");
+    this.logger.info("Cleanup timer started");
   }
 
   /**
@@ -261,7 +312,7 @@ export class IFlowSessionManager {
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = undefined;
-      console.log("[SessionManager] Cleanup timer stopped");
+      this.logger.info("Cleanup timer stopped");
     }
   }
 
@@ -283,13 +334,45 @@ export class IFlowSessionManager {
 
     // 销毁过期会话
     if (expiredSessions.length > 0) {
-      console.log(
-        `[SessionManager] Cleaning up ${expiredSessions.length} expired sessions`
+      this.logger.info(
+        `Cleaning up ${expiredSessions.length} expired sessions`
       );
 
       for (const sessionKey of expiredSessions) {
         await this.destroySession(sessionKey);
       }
+    }
+  }
+
+  /**
+   * 淘汰最不活跃的会话（LRU策略）
+   * 当会话数达到上限时调用
+   */
+  private async evictOldestSession(): Promise<void> {
+    if (this.sessions.size === 0) {
+      return;
+    }
+
+    // 找出最不活跃的会话
+    let oldestKey: string | null = null;
+    let oldestTime = Date.now();
+
+    for (const [sessionKey, session] of this.sessions.entries()) {
+      const lastActivityTime = session.lastActivity.getTime();
+      if (lastActivityTime < oldestTime) {
+        oldestTime = lastActivityTime;
+        oldestKey = sessionKey;
+      }
+    }
+
+    // 淘汰最老的会话
+    if (oldestKey) {
+      const session = this.sessions.get(oldestKey);
+      this.logger.warn(
+        `Evicting oldest session: ${session?.id} (${oldestKey}), last active: ${new Date(oldestTime).toISOString()}`
+      );
+      await this.destroySession(oldestKey);
+      this.stats.evictionCount++;
     }
   }
 
@@ -326,6 +409,29 @@ export class IFlowSessionManager {
   }
 
   /**
+   * 获取会话统计信息（用于监控和调试）
+   */
+  getStats(): {
+    activeSessions: number;
+    maxSessions: number;
+    totalCreated: number;
+    totalDestroyed: number;
+    evictionCount: number;
+    utilizationPercent: number;
+  } {
+    return {
+      activeSessions: this.sessions.size,
+      maxSessions: this.MAX_SESSIONS,
+      totalCreated: this.stats.totalCreated,
+      totalDestroyed: this.stats.totalDestroyed,
+      evictionCount: this.stats.evictionCount,
+      utilizationPercent: Math.round(
+        (this.sessions.size / this.MAX_SESSIONS) * 100
+      ),
+    };
+  }
+
+  /**
    * 销毁用户的所有会话
    *
    * @param userId - 用户 ID
@@ -335,8 +441,8 @@ export class IFlowSessionManager {
       key.startsWith(`${userId}:`)
     );
 
-    console.log(
-      `[SessionManager] Destroying ${userSessions.length} sessions for user ${userId}`
+    this.logger.info(
+      `Destroying ${userSessions.length} sessions for user ${userId}`
     );
 
     for (const sessionKey of userSessions) {
@@ -348,8 +454,8 @@ export class IFlowSessionManager {
    * 销毁所有会话（用于优雅关闭）
    */
   async destroyAllSessions(): Promise<void> {
-    console.log(
-      `[SessionManager] Destroying all ${this.sessions.size} sessions`
+    this.logger.info(
+      `Destroying all ${this.sessions.size} sessions`
     );
 
     const sessionKeys = Array.from(this.sessions.keys());
@@ -372,7 +478,8 @@ export const sessionManager = new IFlowSessionManager();
  */
 if (typeof process !== "undefined") {
   const gracefulShutdown = async () => {
-    console.log("[SessionManager] Graceful shutdown initiated");
+    const logger = createLogger("SessionManager");
+    logger.info("Graceful shutdown initiated");
     await sessionManager.destroyAllSessions();
     process.exit(0);
   };

@@ -7,7 +7,7 @@ export default async function Page() {
   const session = await auth();
 
   if (!session) {
-    redirect("/api/auth/guest");
+    redirect("/login");
   }
 
   // 主页面始终是新对话，生成临时 workspaceId

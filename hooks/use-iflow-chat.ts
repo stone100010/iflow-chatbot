@@ -6,7 +6,7 @@
 
 "use client";
 
-import { useCallback, useRef, useState, useEffect } from "react";
+import { useCallback, useReducer, useRef, useState, useEffect } from "react";
 import { nanoid } from "nanoid";
 import type {
   IFlowChatMessage,
@@ -19,6 +19,140 @@ import type {
 import { PerformanceMonitor } from "@/lib/performance-monitor";
 
 /**
+ * 消息操作类型
+ */
+type MessageAction =
+  | { type: "SET_MESSAGES"; payload: IFlowChatMessage[] }
+  | { type: "ADD_MESSAGE"; payload: IFlowChatMessage }
+  | {
+      type: "UPDATE_LAST_MESSAGE";
+      payload: Partial<IFlowChatMessage>;
+    }
+  | {
+      type: "UPDATE_LAST_CONTENT";
+      payload: string;
+      agentInfo?: IFlowChatMessage["agentInfo"];
+    }
+  | {
+      type: "UPDATE_LAST_TOOL_CALL";
+      payload: ToolCall;
+    }
+  | {
+      type: "UPDATE_LAST_PLAN";
+      payload: PlanEntry[];
+    }
+  | {
+      type: "FINISH_LAST_MESSAGE";
+      payload: string | undefined;
+    }
+  | { type: "CLEAR_MESSAGES" };
+
+/**
+ * 消息 Reducer - 优化的状态更新逻辑
+ * 避免每次更新都复制整个消息数组
+ */
+function messagesReducer(
+  state: IFlowChatMessage[],
+  action: MessageAction
+): IFlowChatMessage[] {
+  switch (action.type) {
+    case "SET_MESSAGES":
+      return action.payload;
+
+    case "ADD_MESSAGE":
+      return [...state, action.payload];
+
+    case "UPDATE_LAST_MESSAGE": {
+      if (state.length === 0) return state;
+      const newState = state.slice();
+      const lastIndex = newState.length - 1;
+      newState[lastIndex] = {
+        ...newState[lastIndex],
+        ...action.payload,
+      };
+      return newState;
+    }
+
+    case "UPDATE_LAST_CONTENT": {
+      if (state.length === 0) return state;
+      const lastMsg = state[state.length - 1];
+      if (lastMsg.role !== "assistant") return state;
+
+      const newState = state.slice();
+      const lastIndex = newState.length - 1;
+      newState[lastIndex] = {
+        ...lastMsg,
+        content: action.payload,
+        ...(action.agentInfo && { agentInfo: action.agentInfo }),
+      };
+      return newState;
+    }
+
+    case "UPDATE_LAST_TOOL_CALL": {
+      if (state.length === 0) return state;
+      const lastMsg = state[state.length - 1];
+      if (lastMsg.role !== "assistant") return state;
+
+      const toolCalls = lastMsg.toolCalls || [];
+      const existingIndex = toolCalls.findIndex(
+        (tc) => tc.toolName === action.payload.toolName
+      );
+
+      const newToolCalls =
+        existingIndex >= 0
+          ? toolCalls.map((tc, idx) =>
+              idx === existingIndex
+                ? { ...tc, ...action.payload }
+                : tc
+            )
+          : [...toolCalls, action.payload];
+
+      const newState = state.slice();
+      const lastIndex = newState.length - 1;
+      newState[lastIndex] = {
+        ...lastMsg,
+        toolCalls: newToolCalls,
+      };
+      return newState;
+    }
+
+    case "UPDATE_LAST_PLAN": {
+      if (state.length === 0) return state;
+      const lastMsg = state[state.length - 1];
+      if (lastMsg.role !== "assistant") return state;
+
+      const newState = state.slice();
+      const lastIndex = newState.length - 1;
+      newState[lastIndex] = {
+        ...lastMsg,
+        plan: action.payload,
+      };
+      return newState;
+    }
+
+    case "FINISH_LAST_MESSAGE": {
+      if (state.length === 0) return state;
+      const lastMsg = state[state.length - 1];
+      if (lastMsg.role !== "assistant") return state;
+
+      const newState = state.slice();
+      const lastIndex = newState.length - 1;
+      newState[lastIndex] = {
+        ...lastMsg,
+        stopReason: action.payload,
+      };
+      return newState;
+    }
+
+    case "CLEAR_MESSAGES":
+      return [];
+
+    default:
+      return state;
+  }
+}
+
+/**
  * Hook 配置选项
  */
 export interface UseIFlowChatOptions {
@@ -27,6 +161,7 @@ export interface UseIFlowChatOptions {
   modelName?: IFlowModel;
   permissionMode?: IFlowPermissionMode;
   loadHistory?: boolean; // 是否加载历史消息
+  csrfToken?: string | null; // CSRF token
   onError?: (error: Error) => void;
   onFinish?: (message: IFlowChatMessage) => void;
 }
@@ -67,12 +202,13 @@ export function useIFlowChat(
     modelName = "MiniMax-M2",
     permissionMode = "yolo",
     loadHistory = false,
+    csrfToken,
     onError,
     onFinish,
   } = options;
 
-  // 状态管理
-  const [messages, setMessages] = useState<IFlowChatMessage[]>(initialMessages);
+  // 状态管理 - 使用 useReducer 优化性能
+  const [messages, dispatch] = useReducer(messagesReducer, initialMessages);
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -131,7 +267,7 @@ export function useIFlowChat(
         }));
 
         console.log(`[useIFlowChat] Loaded ${loadedMessages.length} messages from history`);
-        setMessages(loadedMessages);
+        dispatch({ type: "SET_MESSAGES", payload: loadedMessages });
       } catch (err: any) {
         if (isCancelled) return;
 
@@ -183,7 +319,7 @@ export function useIFlowChat(
         content: content.trim(),
         createdAt: new Date(),
       };
-      setMessages((prev) => [...prev, userMessage]);
+      dispatch({ type: "ADD_MESSAGE", payload: userMessage });
 
       // 创建助手消息占位符
       const assistantMessage: IFlowChatMessage = {
@@ -194,7 +330,7 @@ export function useIFlowChat(
         plan: [],
         createdAt: new Date(),
       };
-      setMessages((prev) => [...prev, assistantMessage]);
+      dispatch({ type: "ADD_MESSAGE", payload: assistantMessage });
 
       setIsStreaming(true);
 
@@ -210,6 +346,7 @@ export function useIFlowChat(
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            ...(csrfToken && { "x-csrf-token": csrfToken }),
           },
           body: JSON.stringify({
             workspaceId,
@@ -266,95 +403,69 @@ export function useIFlowChat(
                 const jsonData = line.slice(6); // 去掉 "data: "
                 const data = JSON.parse(jsonData) as SSEData;
 
-                // 更新消息状态
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const lastMsg = updated[updated.length - 1];
+                // 使用 dispatch 更新消息状态 - 避免复制整个数组
+                switch (data.type) {
+                  case "text-delta":
+                    // iFlow SDK 返回完整文本,直接替换而不是追加
+                    dispatch({
+                      type: "UPDATE_LAST_CONTENT",
+                      payload: data.text,
+                      agentInfo: data.agentInfo,
+                    });
+                    break;
 
-                  if (lastMsg.role !== "assistant") {
-                    console.warn(
-                      "[useIFlowChat] Last message is not assistant, skipping update"
-                    );
-                    return prev;
-                  }
+                  case "tool-call":
+                    // 更新工具调用
+                    const toolCall: ToolCall = {
+                      id: nanoid(),
+                      toolName: data.toolName,
+                      status: data.status,
+                      label: data.label,
+                      args: data.args,
+                      result: data.result,
+                      error: data.error,
+                    };
+                    dispatch({
+                      type: "UPDATE_LAST_TOOL_CALL",
+                      payload: toolCall,
+                    });
+                    break;
 
-                  switch (data.type) {
-                    case "text-delta":
-                      // iFlow SDK 返回完整文本,直接替换而不是追加
-                      lastMsg.content = data.text;
-                      if (data.agentInfo) {
-                        lastMsg.agentInfo = data.agentInfo;
-                      }
-                      break;
+                  case "plan":
+                    // 更新任务计划
+                    dispatch({
+                      type: "UPDATE_LAST_PLAN",
+                      payload: data.entries,
+                    });
+                    break;
 
-                    case "tool-call":
-                      // 更新工具调用
-                      if (!lastMsg.toolCalls) {
-                        lastMsg.toolCalls = [];
-                      }
+                  case "finish":
+                    // 标记完成
+                    dispatch({
+                      type: "FINISH_LAST_MESSAGE",
+                      payload: data.stopReason,
+                    });
+                    break;
 
-                      // 查找已存在的工具调用
-                      const existingToolIndex = lastMsg.toolCalls.findIndex(
-                        (tc) => tc.toolName === data.toolName
-                      );
-
-                      const toolCall: ToolCall = {
-                        id: nanoid(),
-                        toolName: data.toolName,
-                        status: data.status,
-                        label: data.label,
-                        args: data.args,
-                        result: data.result,
-                        error: data.error,
-                      };
-
-                      if (existingToolIndex >= 0) {
-                        // 更新已存在的工具调用
-                        lastMsg.toolCalls[existingToolIndex] = {
-                          ...lastMsg.toolCalls[existingToolIndex],
-                          ...toolCall,
-                        };
-                      } else {
-                        // 添加新的工具调用
-                        lastMsg.toolCalls.push(toolCall);
-                      }
-                      break;
-
-                    case "plan":
-                      // 更新任务计划
-                      lastMsg.plan = data.entries;
-                      break;
-
-                    case "finish":
-                      // 标记完成
-                      lastMsg.stopReason = data.stopReason;
-                      break;
-
-                    case "error":
-                      // 错误处理
-                      console.error("[useIFlowChat] Stream error:", data.error);
-                      const streamError = new Error(data.error);
-                      setError(streamError);
-                      if (onError) {
-                        onError(streamError);
-                      }
-                      break;
-                  }
-
-                  return updated;
-                });
+                  case "error":
+                    // 错误处理
+                    console.error("[useIFlowChat] Stream error:", data.error);
+                    const streamError = new Error(data.error);
+                    setError(streamError);
+                    if (onError) {
+                      onError(streamError);
+                    }
+                    break;
+                }
 
                 // 如果是完成或错误消息，结束流
                 if (data.type === "finish" || data.type === "error") {
                   // 触发 onFinish 回调
                   if (data.type === "finish" && onFinish) {
-                    setMessages((prev) => {
-                      const lastMsg = prev[prev.length - 1];
-                      if (lastMsg.role === "assistant") {
-                        onFinish(lastMsg);
-                      }
-                      return prev;
-                    });
+                    const lastMsg = messages[messages.length - 1];
+                    if (lastMsg?.role === "assistant") {
+                      onFinish(lastMsg);
+                    }
                   }
                   break;
                 }
@@ -377,13 +488,9 @@ export function useIFlowChat(
           }
 
           // 在最后一条消息中显示错误
-          setMessages((prev) => {
-            const updated = [...prev];
-            const lastMsg = updated[updated.length - 1];
-            if (lastMsg.role === "assistant") {
-              lastMsg.content = `错误: ${fetchError.message}`;
-            }
-            return updated;
+          dispatch({
+            type: "UPDATE_LAST_CONTENT",
+            payload: `错误: ${fetchError.message}`,
           });
         }
       } finally {
@@ -396,6 +503,7 @@ export function useIFlowChat(
       workspaceId,
       currentConfig,
       isStreaming,
+      csrfToken,
       onError,
       onFinish,
     ]
@@ -432,7 +540,7 @@ export function useIFlowChat(
    * 清除消息
    */
   const clearMessages = useCallback(() => {
-    setMessages([]);
+    dispatch({ type: "CLEAR_MESSAGES" });
   }, []);
 
   return {

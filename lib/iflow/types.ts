@@ -200,6 +200,8 @@ export interface IFlowSession {
   createdAt: Date;
   lastActivity: Date;
   messageCount: number;
+  historyContext?: string; // 首次连接时的历史上下文
+  isFirstMessage: boolean; // 是否是首次消息（用于带上历史）
 }
 
 // ============================================================================
@@ -267,7 +269,7 @@ export interface APIError {
 /**
  * 用户类型
  */
-export type UserType = "guest" | "regular" | "premium";
+export type UserType = "regular" | "premium";
 
 /**
  * 用户限制配置
@@ -340,13 +342,6 @@ export const IFLOW_PERMISSION_MODE_DESCRIPTIONS: Record<IFlowPermissionMode, str
  * 用户限制配置
  */
 export const USER_LIMITS: Record<UserType, UserLimits> = {
-  guest: {
-    messagesPerDay: 20,
-    concurrentRequests: 1,
-    workspaceLimit: 1,
-    maxFileSize: 1 * 1024 * 1024, // 1MB
-    maxWorkspaceSize: 10 * 1024 * 1024, // 10MB
-  },
   regular: {
     messagesPerDay: 100,
     concurrentRequests: 3,

@@ -1,11 +1,10 @@
 "use client";
 
-import { ChevronUp } from "lucide-react";
+import { ChevronUp, Settings as SettingsIcon, LogOut } from "lucide-react";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
 import type { User } from "next-auth";
 import { signOut } from "next-auth/react";
-import { useTheme } from "next-themes";
+import { useState } from "react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,18 +17,15 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
-import { guestRegex } from "@/lib/constants";
+import { SettingsDialog } from "@/components/settings/settings-dialog";
 
 export function SidebarUserNav({ user }: { user: User }) {
-  const router = useRouter();
-  const { setTheme, resolvedTheme } = useTheme();
-
-  const isGuest = guestRegex.test(user?.email ?? "");
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
   return (
     <SidebarMenu>
       <SidebarMenuItem>
-        <DropdownMenu>
+        <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               className="h-10 bg-background data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
@@ -43,7 +39,7 @@ export function SidebarUserNav({ user }: { user: User }) {
                 width={24}
               />
               <span className="truncate" data-testid="user-email">
-                {isGuest ? "Guest" : user?.email}
+                {user?.email}
               </span>
               <ChevronUp className="ml-auto" />
             </SidebarMenuButton>
@@ -53,31 +49,38 @@ export function SidebarUserNav({ user }: { user: User }) {
             data-testid="user-nav-menu"
             side="top"
           >
-            <DropdownMenuItem
-              className="cursor-pointer"
-              data-testid="user-nav-item-theme"
-              onSelect={() =>
-                setTheme(resolvedTheme === "dark" ? "light" : "dark")
-              }
-            >
-              {`Toggle ${resolvedTheme === "light" ? "dark" : "light"} mode`}
-            </DropdownMenuItem>
+            {/* Settings 选项 */}
+            <SettingsDialog>
+              <DropdownMenuItem
+                className="cursor-pointer"
+                data-testid="user-nav-item-settings"
+                onSelect={(e) => {
+                  e.preventDefault(); // 阻止默认关闭行为
+                }}
+              >
+                <SettingsIcon className="w-4 h-4 mr-2" />
+                Settings
+              </DropdownMenuItem>
+            </SettingsDialog>
+
             <DropdownMenuSeparator />
-            <DropdownMenuItem asChild data-testid="user-nav-item-auth">
+
+            {/* Sign out 选项 */}
+            <DropdownMenuItem
+              asChild
+              data-testid="user-nav-item-auth"
+              className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
+            >
               <button
-                className="w-full cursor-pointer"
-                onClick={() => {
-                  if (isGuest) {
-                    router.push("/login");
-                  } else {
-                    signOut({
-                      redirectTo: "/",
-                    });
-                  }
+                className="w-full cursor-pointer flex items-center"
+                onClick={async () => {
+                  await signOut({ redirect: false });
+                  window.location.href = "/login";
                 }}
                 type="button"
               >
-                {isGuest ? "Login to your account" : "Sign out"}
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign out
               </button>
             </DropdownMenuItem>
           </DropdownMenuContent>

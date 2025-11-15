@@ -11,6 +11,8 @@ import { sessionManager } from "@/lib/iflow/session-manager";
 import { adaptIFlowMessage } from "@/lib/iflow/message-adapter";
 import type { IFlowModel, IFlowPermissionMode } from "@/lib/iflow/types";
 import { isValidModel, isValidPermissionMode } from "@/lib/iflow/client";
+import { validateCsrfToken } from "@/lib/security/csrf";
+import { chatRateLimiter, createRateLimitResponse } from "@/lib/security/rate-limiter";
 import {
   getIFlowMessageCountToday,
   saveIFlowMessage,
@@ -47,7 +49,6 @@ function generateWorkspaceName(userMessage: string): string {
  * 用户每日消息限制
  */
 const MESSAGE_LIMITS = {
-  guest: 20,
   regular: 100,
   premium: 1000,
 };
@@ -57,7 +58,7 @@ const MESSAGE_LIMITS = {
  */
 async function checkDailyMessageLimit(
   userId: string,
-  userType: "guest" | "regular"
+  userType: "regular"
 ): Promise<{ allowed: boolean; remaining: number }> {
   const limit = MESSAGE_LIMITS[userType];
   const used = await getIFlowMessageCountToday(userId);
@@ -89,7 +90,35 @@ export async function POST(request: NextRequest) {
 
     console.log(`[Chat API] Request from user: ${userId} (${userType})`);
 
-    // 2. 解析和验证请求体
+    // 2. CSRF 保护验证
+    const csrfToken = request.headers.get("x-csrf-token");
+    if (!validateCsrfToken(csrfToken, userId)) {
+      console.warn(`[Chat API] CSRF validation failed for user ${userId}`);
+      return NextResponse.json(
+        { error: "Invalid CSRF token" },
+        { status: 403 }
+      );
+    }
+
+    // 3. 速率限制检查
+    const rateLimitResult = chatRateLimiter.check(userId);
+    if (!rateLimitResult.allowed) {
+      console.warn(`[Chat API] Rate limit exceeded for user ${userId}`);
+      const response = createRateLimitResponse(rateLimitResult.resetTime);
+      return NextResponse.json(response.body, {
+        status: response.status,
+        headers: response.headers,
+      });
+    }
+
+    // 添加速率限制信息到响应头（用于客户端显示）
+    const rateLimitHeaders = {
+      "X-RateLimit-Limit": "20",
+      "X-RateLimit-Remaining": rateLimitResult.remaining.toString(),
+      "X-RateLimit-Reset": new Date(rateLimitResult.resetTime).toISOString(),
+    };
+
+    // 4. 解析和验证请求体
     let body: z.infer<typeof chatRequestSchema>;
     try {
       const json = await request.json();
@@ -104,7 +133,7 @@ export async function POST(request: NextRequest) {
 
     const { workspaceId, message, modelName, permissionMode } = body;
 
-    // 3. 验证模型和权限模式
+    // 5. 验证模型和权限模式
     if (!isValidModel(modelName)) {
       return NextResponse.json(
         { error: `Invalid model: ${modelName}` },
@@ -119,7 +148,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. 限流检查
+    // 6. 每日消息限额检查
     const rateLimit = await checkDailyMessageLimit(userId, userType);
     if (!rateLimit.allowed) {
       return NextResponse.json(
@@ -136,7 +165,7 @@ export async function POST(request: NextRequest) {
       `[Chat API] Processing message for workspace ${workspaceId}, model=${modelName}, permission=${permissionMode}`
     );
 
-    // 5. 确保工作区存在
+    // 7. 确保工作区存在
     let workspace = await getWorkspaceById(workspaceId);
 
     if (!workspace) {
@@ -164,7 +193,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. 获取或创建 iFlow 会话
+    // 8. 获取或创建 iFlow 会话
     let iflowSession;
     try {
       iflowSession = await sessionManager.getOrCreateSession(
@@ -187,9 +216,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. 发送消息到 iFlow
+    // 9. 发送消息到 iFlow
     try {
-      await iflowSession.client.sendMessage(message);
+      // 检查是否是首次消息，如果是则带上历史上下文
+      let messageToSend = message;
+
+      if (iflowSession.isFirstMessage && iflowSession.historyContext) {
+        // 第一次发送消息时，带上历史上下文
+        messageToSend = iflowSession.historyContext + message;
+        console.log(`[Chat API] First message with history context (${iflowSession.historyContext.length} chars)`);
+
+        // 标记已发送首次消息
+        iflowSession.isFirstMessage = false;
+      } else {
+        console.log(`[Chat API] Regular message (no history context)`);
+      }
+
+      await iflowSession.client.sendMessage(messageToSend);
       console.log(`[Chat API] Message sent to iFlow`);
     } catch (error) {
       console.error("[Chat API] Failed to send message:", error);
@@ -202,7 +245,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 7. 创建 SSE 流式响应
+    // 10. 创建 SSE 流式响应
     try {
       const messageStream = iflowSession.client.receiveMessages();
 
@@ -350,6 +393,7 @@ export async function POST(request: NextRequest) {
           "Cache-Control": "no-cache, no-transform",
           Connection: "keep-alive",
           "X-Accel-Buffering": "no", // Disable nginx buffering
+          ...rateLimitHeaders,
         },
       });
     } catch (error) {

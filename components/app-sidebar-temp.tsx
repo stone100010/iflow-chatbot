@@ -175,7 +175,7 @@ export function AppSidebarTemp({ user }: { user: User | undefined }) {
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent align="end" className="hidden md:block">
-                    新建对话
+                    New Chat
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -190,7 +190,7 @@ export function AppSidebarTemp({ user }: { user: User | undefined }) {
               <div className="flex flex-col items-center justify-center py-12">
                 <div className="w-8 h-8 border-4 border-zinc-200 dark:border-zinc-700 border-t-blue-500 rounded-full animate-spin mb-4" />
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  加载中...
+                  Loading...
                 </p>
               </div>
             ) : workspaces.length === 0 ? (
@@ -199,16 +199,16 @@ export function AppSidebarTemp({ user }: { user: User | undefined }) {
                   <MessageSquareIcon className="w-8 h-8 text-zinc-500 dark:text-zinc-400" />
                 </div>
                 <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-1">
-                  暂无对话历史
+                  No chat history
                 </p>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-[200px]">
-                  开始新对话后，历史记录会显示在这里
+                  Your chat history will appear here after starting a new conversation
                 </p>
               </div>
             ) : (
               <div className="space-y-1">
                 <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 px-2 py-1">
-                  最近对话
+                  Recent Chats
                 </div>
                 {workspaces.map((workspace) => {
                   return (
@@ -267,7 +267,7 @@ export function AppSidebarTemp({ user }: { user: User | undefined }) {
                             }}
                           >
                             <PinIcon className="w-4 h-4 mr-2" />
-                            <span>置顶</span>
+                            <span>Pin</span>
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) => {
@@ -277,7 +277,7 @@ export function AppSidebarTemp({ user }: { user: User | undefined }) {
                             }}
                           >
                             <Edit2Icon className="w-4 h-4 mr-2" />
-                            <span>重命名</span>
+                            <span>Rename</span>
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={(e) => {
@@ -287,7 +287,7 @@ export function AppSidebarTemp({ user }: { user: User | undefined }) {
                             className="text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
                           >
                             <Trash2Icon className="w-4 h-4 mr-2" />
-                            <span>删除</span>
+                            <span>Delete</span>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -313,13 +313,13 @@ export function AppSidebarTemp({ user }: { user: User | undefined }) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确定删除这条对话吗？</AlertDialogTitle>
+            <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
             <AlertDialogDescription>
-              删除后无法恢复，所有聊天记录将被永久删除。
+              This action cannot be undone. All chat history will be permanently deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
                 if (deleteDialogWorkspaceId) {
@@ -328,7 +328,7 @@ export function AppSidebarTemp({ user }: { user: User | undefined }) {
               }}
               className="bg-red-600 hover:bg-red-700"
             >
-              删除
+              Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -69,23 +69,6 @@ export async function createUser(email: string, password: string) {
   }
 }
 
-export async function createGuestUser() {
-  const email = `guest-${Date.now()}`;
-  const password = generateHashedPassword(generateUUID());
-
-  try {
-    return await db.insert(user).values({ email, password }).returning({
-      id: user.id,
-      email: user.email,
-    });
-  } catch (_error) {
-    throw new ChatSDKError(
-      "bad_request:database",
-      "Failed to create guest user"
-    );
-  }
-}
-
 export async function saveChat({
   id,
   userId,
@@ -631,6 +614,7 @@ export async function createWorkspace({
         modelName,
         permissionMode,
         size: "0",
+        isNameCustomized: false, // 新创建的工作区，名称未自定义
         createdAt: new Date(),
         lastAccessedAt: new Date(),
         updatedAt: new Date(),
@@ -639,6 +623,7 @@ export async function createWorkspace({
 
     return newWorkspace;
   } catch (_error) {
+    console.error("[createWorkspace] Database error:", _error);
     throw new ChatSDKError(
       "bad_request:database",
       "Failed to create workspace"

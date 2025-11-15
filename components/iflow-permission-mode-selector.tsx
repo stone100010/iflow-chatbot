@@ -32,11 +32,11 @@ export function IFlowPermissionModeSelector({
     <Select.Root value={value} onValueChange={onChange} disabled={disabled}>
       <Select.Trigger
         className={`inline-flex items-center justify-between gap-2 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 px-3 py-2 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors ${className}`}
-        aria-label="选择权限模式"
+        aria-label="Select permission mode"
       >
         <div className="flex items-center gap-2">
           <Shield className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
-          <span className="text-zinc-500 dark:text-zinc-400">权限:</span>
+          <span className="text-zinc-500 dark:text-zinc-400">Permission:</span>
           <Select.Value>{IFLOW_PERMISSION_MODE_NAMES[value]}</Select.Value>
         </div>
         <Select.Icon>

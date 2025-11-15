@@ -7,9 +7,10 @@
 "use client";
 
 import { memo } from "react";
-import { MessageContent } from "@/components/message-content";
+import { MessageContent, extractThinkContent } from "@/components/message-content";
 import { IFlowToolStatus } from "@/components/iflow-tool-status";
 import { IFlowPlanView } from "@/components/iflow-plan-view";
+import { IFlowThinkView } from "@/components/iflow-think-view";
 import type { IFlowChatMessage } from "@/lib/iflow/types";
 
 interface IFlowMessageListProps {
@@ -51,21 +52,26 @@ export const IFlowMessageList = memo(function IFlowMessageList({ messages }: IFl
                   </div>
                 )}
 
-                {/* 主要内容 */}
-                {msg.content && <MessageContent content={msg.content} />}
-
-                {/* 工具调用 */}
-                {msg.toolCalls && msg.toolCalls.length > 0 && (
-                  <IFlowToolStatus toolCalls={msg.toolCalls} />
+                {/* 1. 思考过程 */}
+                {msg.content && extractThinkContent(msg.content).length > 0 && (
+                  <IFlowThinkView thinkBlocks={extractThinkContent(msg.content)} />
                 )}
 
-                {/* 任务计划 */}
+                {/* 2. 任务计划 */}
                 {msg.plan && msg.plan.length > 0 && (
                   <IFlowPlanView
                     entries={msg.plan}
                     isFinished={!!msg.stopReason}
                   />
                 )}
+
+                {/* 3. 工具调用 */}
+                {msg.toolCalls && msg.toolCalls.length > 0 && (
+                  <IFlowToolStatus toolCalls={msg.toolCalls} />
+                )}
+
+                {/* 4. 最终结果 */}
+                {msg.content && <MessageContent content={msg.content} />}
               </div>
             )}
           </div>

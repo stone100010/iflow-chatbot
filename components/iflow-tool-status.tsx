@@ -1,7 +1,7 @@
 /**
  * IFlowToolStatus 组件
  *
- * 显示 iFlow 工具调用的状态
+ * 显示 iFlow 工具调用的状态（支持两层折叠 + 智能渲染）
  */
 
 "use client";
@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ToolCall, ToolCallStatus } from "@/lib/iflow/types";
 
 interface IFlowToolStatusProps {
@@ -96,21 +98,60 @@ export function IFlowToolStatus({
   toolCalls,
   className = "",
 }: IFlowToolStatusProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   if (!toolCalls || toolCalls.length === 0) {
     return null;
   }
 
+  const completedCount = toolCalls.filter((t) => t.status === "completed").length;
+  const failedCount = toolCalls.filter((t) => t.status === "failed").length;
+
   return (
-    <div className={`space-y-2 ${className}`}>
-      {toolCalls.map((toolCall, index) => (
-        <ToolCallItem key={`${toolCall.id}-${index}`} toolCall={toolCall} />
-      ))}
+    <div
+      className={`rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 overflow-hidden ${className}`}
+    >
+      {/* 第一层：整体折叠标题栏 */}
+      <button
+        onClick={() => setIsExpanded(!isExpanded)}
+        className="w-full flex items-center gap-3 p-4 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors"
+      >
+        {/* 折叠图标 */}
+        <div className="flex-shrink-0">
+          {isExpanded ? (
+            <ChevronDown className="w-4 h-4 text-zinc-500" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-zinc-500" />
+          )}
+        </div>
+
+        {/* 标题和统计 */}
+        <div className="flex items-center gap-2 flex-1">
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+            🔧 Tool Calls
+          </h3>
+          <span className="px-2 py-0.5 text-xs font-medium bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 rounded">
+            {toolCalls.length} items
+          </span>
+        </div>
+      </button>
+
+      {/* 第二层：展开后显示所有工具调用 */}
+      {isExpanded && (
+        <div className="border-t border-zinc-200 dark:border-zinc-800 p-4 pt-3">
+          <div className="space-y-2">
+            {toolCalls.map((toolCall, index) => (
+              <ToolCallItem key={`${toolCall.id}-${index}`} toolCall={toolCall} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * 单个工具调用项
+ * 单个工具调用项（第二层折叠）
  */
 function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -187,12 +228,13 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
         </div>
       </div>
 
-      {/* 展开的代码内容 */}
+      {/* 展开的代码内容（第三层：单个工具内容展开） */}
       {isExpanded && hasCode && (
         <div className="border-t border-zinc-200 dark:border-zinc-800">
-          <CodeDisplay
-            code={codeContent as string}
-            language={detectLanguage(toolCall.args?.file_path)}
+          <ContentDisplay
+            content={codeContent as string}
+            filePath={toolCall.args?.file_path as string | undefined}
+            toolName={toolCall.toolName}
           />
         </div>
       )}
@@ -201,9 +243,37 @@ function ToolCallItem({ toolCall }: { toolCall: ToolCall }) {
 }
 
 /**
- * 代码显示组件
+ * 智能内容显示组件
+ * 根据文件类型选择渲染方式：Markdown vs 代码高亮
  */
-function CodeDisplay({ code, language }: { code: string; language: string }) {
+function ContentDisplay({
+  content,
+  filePath,
+  toolName
+}: {
+  content: string;
+  filePath?: string;
+  toolName: string;
+}) {
+  // 检测是否是 Markdown 文件
+  const isMarkdown = filePath?.toLowerCase().endsWith('.md');
+
+  // Write/Edit 工具的 Markdown 文件用 Markdown 渲染
+  if (isMarkdown && (toolName.toLowerCase() === 'write' || toolName.toLowerCase() === 'edit')) {
+    return (
+      <div className="p-4 bg-zinc-50 dark:bg-zinc-900/50">
+        <div className="prose dark:prose-invert max-w-none prose-sm">
+          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+            {content}
+          </ReactMarkdown>
+        </div>
+      </div>
+    );
+  }
+
+  // 其他情况用代码高亮
+  const language = detectLanguage(filePath);
+
   return (
     <div className="relative">
       <SyntaxHighlighter
@@ -217,7 +287,7 @@ function CodeDisplay({ code, language }: { code: string; language: string }) {
         }}
         showLineNumbers
       >
-        {code}
+        {content}
       </SyntaxHighlighter>
     </div>
   );

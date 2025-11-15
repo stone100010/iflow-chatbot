@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useIFlowChat } from "@/hooks/use-iflow-chat";
+import { useCsrfToken } from "@/hooks/use-csrf-token";
+import { useNotificationSound } from "@/hooks/use-notification-sound";
 import { IFlowConfigSelector } from "@/components/iflow-config-selector";
 import { IFlowMessageList } from "@/components/iflow-message-list";
 import { Button } from "@/components/ui/button";
@@ -9,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { IFlowModel, IFlowPermissionMode } from "@/lib/iflow/types";
-import { PlusIcon, StopIcon } from "@radix-ui/react-icons";
+import { StopIcon } from "@radix-ui/react-icons";
 import { ArrowUpIcon, Edit2Icon, CheckIcon, XIcon } from "lucide-react";
 import { PerformanceMonitor } from "@/lib/performance-monitor";
 
@@ -29,6 +31,12 @@ export function IFlowChat({
   const [input, setInput] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // CSRF 保护
+  const { csrfToken } = useCsrfToken();
+
+  // 音效功能
+  const { playNotification } = useNotificationSound();
 
   // 标题编辑状态
   const [workspaceName, setWorkspaceName] = useState<string>("");
@@ -68,12 +76,21 @@ export function IFlowChat({
 
   // 加载工作区名称
   useEffect(() => {
+    // 只有在加载历史记录时才需要获取 workspace 名称
+    // 新对话的 workspace 还不存在，会在发送第一条消息时创建
+    if (!loadHistory) {
+      setWorkspaceName("Untitled");
+      return;
+    }
+
     const loadWorkspaceName = async () => {
       try {
         const response = await fetch(`/api/iflow/workspaces/${workspaceId}`);
         if (response.ok) {
           const data = await response.json();
           setWorkspaceName(data.name || "Untitled");
+        } else {
+          setWorkspaceName("Untitled");
         }
       } catch (error) {
         console.error("Failed to load workspace name:", error);
@@ -84,7 +101,7 @@ export function IFlowChat({
     if (workspaceId) {
       loadWorkspaceName();
     }
-  }, [workspaceId]);
+  }, [workspaceId, loadHistory]);
 
   // 使用 useCallback 稳定回调引用
   const handleError = useCallback((err: Error) => {
@@ -93,7 +110,28 @@ export function IFlowChat({
 
   const handleFinish = useCallback((msg: any) => {
     console.log("Message finished:", msg);
-  }, []);
+
+    // 🎵 播放完成提示音
+    playNotification();
+
+    // 消息完成后，重新加载 workspace 名称
+    // 这样可以获取到后端生成的名称
+    const refreshWorkspaceName = async () => {
+      try {
+        const response = await fetch(`/api/iflow/workspaces/${workspaceId}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.name && data.name !== "Untitled") {
+            setWorkspaceName(data.name);
+          }
+        }
+      } catch (error) {
+        console.error("Failed to refresh workspace name:", error);
+      }
+    };
+
+    refreshWorkspaceName();
+  }, [workspaceId, playNotification]);
 
   const {
     messages,
@@ -104,12 +142,12 @@ export function IFlowChat({
     currentConfig,
     updateConfig,
     error,
-    clearMessages,
   } = useIFlowChat({
     workspaceId,
     modelName: initialModelName,
     permissionMode: initialPermissionMode,
     loadHistory,
+    csrfToken,
     onError: handleError,
     onFinish: handleFinish,
   });
@@ -268,19 +306,7 @@ export function IFlowChat({
           </div>
         </div>
 
-        <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
-          {/* 移动端只显示图标,桌面端显示文字 */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={clearMessages}
-            disabled={isStreaming || messages.length === 0}
-            className="h-9 w-9 md:w-auto p-0 md:px-3"
-          >
-            <PlusIcon className="w-4 h-4 md:mr-2" />
-            <span className="hidden md:inline">New Chat</span>
-          </Button>
-        </div>
+        {/* 右侧操作按钮区域已移除 - 使用侧边栏的 New Chat 按钮 */}
       </div>
 
       {/* 错误显示 */}
@@ -326,7 +352,7 @@ export function IFlowChat({
             <div className="mb-6">
               <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
                 <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
-                <span>正在生成回复...</span>
+                <span>Generating response...</span>
               </div>
             </div>
           )}
@@ -374,14 +400,14 @@ export function IFlowChat({
             )}
           </div>
 
-          {/* 提示文本 - 桌面端显示 */}
+          {/* Hint text - desktop only */}
           <div className="mt-2 text-xs text-zinc-500 dark:text-zinc-400 text-center hidden md:block">
-            <span className="font-medium">模型:</span> {currentConfig.modelName}{" "}
+            <span className="font-medium">Model:</span> {currentConfig.modelName}{" "}
             <span className="mx-2">·</span>
-            <span className="font-medium">权限:</span>{" "}
+            <span className="font-medium">Permission:</span>{" "}
             {currentConfig.permissionMode}
             <span className="mx-2">·</span>
-            <span className="font-medium">工作区:</span> {workspaceId.slice(0, 8)}
+            <span className="font-medium">Workspace:</span> {workspaceId.slice(0, 8)}
             ...
           </div>
         </div>

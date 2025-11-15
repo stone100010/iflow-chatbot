@@ -29,17 +29,17 @@ iFlow Chatbot is a production-ready Agent chat application that integrates the *
 - 🔧 Tool call visualization and task planning
 - 📱 Fully responsive design (Desktop + Mobile)
 - 🎨 Dark mode with system theme detection
-- 🔐 Secure authentication system
+- 🔐 Secure authentication system (CSRF protection + API rate limiting)
 - 💾 Persistent chat history and workspace management
-- ⚡ High-performance React rendering optimization
+- ⚡ High-performance React rendering optimization (database indexes + session caching)
 
 ---
 
 ## 📋 Key Features
 
 ### 💬 Intelligent Conversation
-- Multi-turn dialogue with context understanding
-- Real-time streaming message transmission
+- Multi-turn dialogue with context understanding (limited to recent 20 messages for optimization)
+- Real-time streaming message transmission (useReducer optimization for state updates)
 - Markdown rendering with code highlighting
 - Tool call status visualization
 - Task plan progress tracking
@@ -49,6 +49,7 @@ iFlow Chatbot is a production-ready Agent chat application that integrates the *
 - Visual tool call process display
 - Task execution plan presentation
 - Code editor and file preview
+- Smart Markdown rendering for Write/Edit tools
 
 ### 📱 User Experience
 - Fully responsive design
@@ -56,6 +57,15 @@ iFlow Chatbot is a production-ready Agent chat application that integrates the *
 - Mobile: Drawer-style sidebar + fullscreen chat
 - Dark mode support
 - Touch-optimized interface
+- Elegant collapsible content sections
+
+### 🔐 Security & Performance
+- **CSRF Protection**: Token-based cross-site request forgery prevention
+- **API Rate Limiting**: Sliding window algorithm to prevent abuse
+- **Structured Logging**: Complete logging system with file and console output
+- **Database Optimization**: Indexed key fields for improved query performance
+- **Memory Management**: Session LRU cache to prevent memory leaks
+- **Context Optimization**: Smart message history limiting to reduce token consumption
 
 ### 🔧 Configuration System
 
@@ -89,12 +99,16 @@ iFlow Chatbot is a production-ready Agent chat application that integrates the *
 - **Authentication**: NextAuth v5
 - **API**: Next.js API Routes
 - **Real-time Communication**: Server-Sent Events (SSE)
+- **Security**: CSRF protection + API rate limiting
+- **Logging**: Structured logging system (winston-like)
+- **Caching**: LRU cache (Session management)
 
 ### Core Integration
 - **AI SDK**: iFlow CLI SDK v0.1.2
 - **Message System**: WebSocket + SSE
 - **Workspace Management**: File system integration
-- **Session Management**: 30-minute auto-cleanup
+- **Session Management**: 30-minute auto-cleanup + bounded cache to prevent leaks
+- **Performance Monitoring**: Database index optimization + query performance tracking
 
 ---
 
@@ -169,7 +183,11 @@ The app will start at [localhost:3000](http://localhost:3000).
 - Streaming message display
 - Tool call progress animations
 - Task plan progress bars
-- Collapsible think blocks
+- **Collapsible content sections**:
+  - 💭 **Thinking Process**: Collapsible thinking blocks with merged display
+  - 📋 **Task Plan**: Collapsible task list with expandable steps
+  - 🔧 **Tool Calls**: Two-layer collapsible structure (overall + individual tools)
+  - 🎨 **Smart Rendering**: Automatic Markdown formatting for .md files, syntax highlighting for code files
 - Code syntax highlighting (oneDark theme)
 
 ---
@@ -178,9 +196,28 @@ The app will start at [localhost:3000](http://localhost:3000).
 
 ### Authentication System
 - NextAuth v5 integration
-- Guest user support (`guest-{timestamp}`)
-- Session management
+- User registration and login
+- Session management with auto-expiration
 - API key environment variable protection
+
+### Security Mechanisms
+- **CSRF Protection**:
+  - Token-based encrypted validation mechanism
+  - Automatic token refresh and expiration management
+  - Hook-based convenient usage (`use-csrf-token`)
+- **API Rate Limiting**:
+  - Sliding window algorithm
+  - Configurable rate limit policies (requests/time window)
+  - Redis/Memory dual implementation support
+  - Admin endpoint for monitoring rate limit status
+- **Session Management**:
+  - LRU cache strategy
+  - Bounded cache to prevent memory leaks
+  - Automatic expiration and cleanup mechanism
+
+### Admin Features
+- `/api/admin/sessions` - Session management and monitoring
+- `/api/admin/rate-limits` - Rate limit rules viewing and configuration
 
 ### iFlow Permission Modes
 - **default**: Each operation requires confirmation

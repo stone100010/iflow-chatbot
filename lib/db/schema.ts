@@ -10,6 +10,7 @@ import {
   timestamp,
   uuid,
   varchar,
+  index,
 } from "drizzle-orm/pg-core";
 import type { AppUsage } from "../usage";
 
@@ -17,7 +18,9 @@ export const user = pgTable("User", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   email: varchar("email", { length: 64 }).notNull(),
   password: varchar("password", { length: 64 }),
-});
+}, (table) => ({
+  emailIdx: index("user_email_idx").on(table.email),
+}));
 
 export type User = InferSelectModel<typeof user>;
 
@@ -32,7 +35,11 @@ export const chat = pgTable("Chat", {
     .notNull()
     .default("private"),
   lastContext: jsonb("lastContext").$type<AppUsage | null>(),
-});
+}, (table) => ({
+  userIdIdx: index("chat_user_id_idx").on(table.userId),
+  createdAtIdx: index("chat_created_at_idx").on(table.createdAt),
+  userIdCreatedAtIdx: index("chat_user_id_created_at_idx").on(table.userId, table.createdAt),
+}));
 
 export type Chat = InferSelectModel<typeof chat>;
 
@@ -59,7 +66,10 @@ export const message = pgTable("Message_v2", {
   parts: json("parts").notNull(),
   attachments: json("attachments").notNull(),
   createdAt: timestamp("createdAt").notNull(),
-});
+}, (table) => ({
+  chatIdIdx: index("message_v2_chat_id_idx").on(table.chatId),
+  createdAtIdx: index("message_v2_created_at_idx").on(table.createdAt),
+}));
 
 export type DBMessage = InferSelectModel<typeof message>;
 
@@ -195,7 +205,11 @@ export const workspace = pgTable("Workspace", {
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   lastAccessedAt: timestamp("lastAccessedAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-});
+}, (table) => ({
+  userIdIdx: index("workspace_user_id_idx").on(table.userId),
+  lastAccessedAtIdx: index("workspace_last_accessed_at_idx").on(table.lastAccessedAt),
+  userIdLastAccessedIdx: index("workspace_user_id_last_accessed_idx").on(table.userId, table.lastAccessedAt),
+}));
 
 export type Workspace = InferSelectModel<typeof workspace>;
 
@@ -241,7 +255,11 @@ export const iflowMessage = pgTable("IFlowMessage", {
   stopReason: varchar("stopReason", { length: 20 }),
 
   createdAt: timestamp("createdAt").notNull().defaultNow(),
-});
+}, (table) => ({
+  workspaceIdIdx: index("iflow_message_workspace_id_idx").on(table.workspaceId),
+  createdAtIdx: index("iflow_message_created_at_idx").on(table.createdAt),
+  workspaceCreatedIdx: index("iflow_message_workspace_created_idx").on(table.workspaceId, table.createdAt),
+}));
 
 export type IFlowMessage = InferSelectModel<typeof iflowMessage>;
 
@@ -265,6 +283,10 @@ export const websiteDeployment = pgTable("WebsiteDeployment", {
   status: varchar("status", { length: 20 }).default("running").notNull(), // running | stopped
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-});
+}, (table) => ({
+  workspaceIdIdx: index("website_deployment_workspace_id_idx").on(table.workspaceId),
+  userIdIdx: index("website_deployment_user_id_idx").on(table.userId),
+  statusIdx: index("website_deployment_status_idx").on(table.status),
+}));
 
 export type WebsiteDeployment = InferSelectModel<typeof websiteDeployment>;

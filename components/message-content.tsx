@@ -5,6 +5,7 @@ import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import remarkGfm from "remark-gfm";
 import { CheckIcon, CopyIcon } from "@radix-ui/react-icons";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { useState, useEffect, memo } from "react";
 import { ThinkBlock } from "./think-block";
 import { PerformanceMonitor } from "@/lib/performance-monitor";
@@ -15,6 +16,8 @@ interface MessageContentProps {
 
 // 使用 React.memo 优化性能,只在 content 变化时重新渲染
 export const MessageContent = memo(function MessageContent({ content }: MessageContentProps) {
+  const [isThinkGroupExpanded, setIsThinkGroupExpanded] = useState(false);
+
   useEffect(() => {
     const label = `MessageContent-Render-${content.substring(0, 20)}`;
     PerformanceMonitor.start(label);
@@ -31,13 +34,8 @@ export const MessageContent = memo(function MessageContent({ content }: MessageC
   const mainContent = content.replace(thinkRegex, "").trim();
 
   return (
-    <div className="space-y-3">
-      {/* 渲染思考过程 */}
-      {thinkMatches.map((match, index) => (
-        <ThinkBlock key={index} content={match[1].trim()} />
-      ))}
-
-      {/* 渲染主要内容 */}
+    <>
+      {/* 只渲染主要内容（不包含思考过程） */}
       {mainContent && (
         <div className="prose dark:prose-invert max-w-none text-sm">
           <ReactMarkdown
@@ -71,9 +69,16 @@ export const MessageContent = memo(function MessageContent({ content }: MessageC
           </ReactMarkdown>
         </div>
       )}
-    </div>
+    </>
   );
 });
+
+// 导出一个辅助函数，用于提取思考内容
+export function extractThinkContent(content: string): string[] {
+  const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
+  const thinkMatches = Array.from(content.matchAll(thinkRegex));
+  return thinkMatches.map(match => match[1].trim());
+}
 
 interface CodeBlockProps {
   language: string;
