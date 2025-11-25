@@ -6,13 +6,16 @@ import { useCsrfToken } from "@/hooks/use-csrf-token";
 import { useNotificationSound } from "@/hooks/use-notification-sound";
 import { IFlowConfigSelector } from "@/components/iflow-config-selector";
 import { IFlowMessageList } from "@/components/iflow-message-list";
+import { AgentSelector } from "@/components/agents";
+import { ShareDialog } from "@/components/share-dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import type { IFlowModel, IFlowPermissionMode } from "@/lib/iflow/types";
+import type { AIAgent } from "@/lib/db/schema";
 import { StopIcon } from "@radix-ui/react-icons";
-import { ArrowUpIcon, Edit2Icon, CheckIcon, XIcon } from "lucide-react";
+import { ArrowUpIcon, Edit2Icon, CheckIcon, XIcon, Share2Icon } from "lucide-react";
 import { PerformanceMonitor } from "@/lib/performance-monitor";
 
 interface IFlowChatProps {
@@ -29,6 +32,7 @@ export function IFlowChat({
   loadHistory = false,
 }: IFlowChatProps) {
   const [input, setInput] = useState("");
+  const [selectedAgent, setSelectedAgent] = useState<Omit<AIAgent, 'systemPrompt'> | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -42,6 +46,9 @@ export function IFlowChat({
   const [workspaceName, setWorkspaceName] = useState<string>("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editingTitle, setEditingTitle] = useState("");
+
+  // 分享对话框状态
+  const [showShareDialog, setShowShareDialog] = useState(false);
 
   // 页面性能监控 - 只在首次挂载时执行
   useEffect(() => {
@@ -167,7 +174,7 @@ export function IFlowChat({
 
   const handleSend = async () => {
     if (!input.trim() || isStreaming) return;
-    await sendMessage(input);
+    await sendMessage(input, selectedAgent?.id);
     setInput("");
   };
 
@@ -277,6 +284,16 @@ export function IFlowChat({
                 >
                   <Edit2Icon className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 flex-shrink-0"
+                  onClick={() => setShowShareDialog(true)}
+                  disabled={isStreaming || messages.length === 0}
+                  title="分享对话"
+                >
+                  <Share2Icon className="w-3.5 h-3.5 text-zinc-600 dark:text-zinc-400" />
+                </Button>
               </>
             )}
           </div>
@@ -364,6 +381,15 @@ export function IFlowChat({
       {/* 输入区 - 移动端和桌面端优化 */}
       <div className="border-t dark:border-zinc-800 p-2 md:p-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] md:pb-4">
         <div className="max-w-3xl mx-auto">
+          {/* Agent Selector */}
+          <div className="mb-2">
+            <AgentSelector
+              selectedAgent={selectedAgent}
+              onSelectAgent={setSelectedAgent}
+              disabled={isStreaming}
+            />
+          </div>
+
           <div className="flex items-end gap-2 md:gap-3">
             <div className="flex-1 relative">
               <Textarea
@@ -409,9 +435,24 @@ export function IFlowChat({
             <span className="mx-2">·</span>
             <span className="font-medium">Workspace:</span> {workspaceId.slice(0, 8)}
             ...
+            {selectedAgent && (
+              <>
+                <span className="mx-2">·</span>
+                <span className="font-medium">Agent:</span> {selectedAgent.icon} {selectedAgent.name}
+              </>
+            )}
           </div>
         </div>
       </div>
+
+      {/* 分享对话框 */}
+      <ShareDialog
+        workspaceId={workspaceId}
+        workspaceName={workspaceName}
+        messageCount={messages.length}
+        open={showShareDialog}
+        onOpenChange={setShowShareDialog}
+      />
     </div>
   );
 }

@@ -12,12 +12,14 @@ import {
   varchar,
   index,
 } from "drizzle-orm/pg-core";
+import { relations } from "drizzle-orm";
 import type { AppUsage } from "../usage";
 
 export const user = pgTable("User", {
   id: uuid("id").primaryKey().notNull().defaultRandom(),
   email: varchar("email", { length: 64 }).notNull(),
   password: varchar("password", { length: 64 }),
+  isAdmin: boolean("isAdmin").default(false).notNull(),
 }, (table) => ({
   emailIdx: index("user_email_idx").on(table.email),
 }));
@@ -290,3 +292,24 @@ export const websiteDeployment = pgTable("WebsiteDeployment", {
 }));
 
 export type WebsiteDeployment = InferSelectModel<typeof websiteDeployment>;
+
+// Relations
+export const workspaceRelations = relations(workspace, ({ many }) => ({
+  messages: many(iflowMessage),
+}));
+
+export const iflowMessageRelations = relations(iflowMessage, ({ one }) => ({
+  workspace: one(workspace, {
+    fields: [iflowMessage.workspaceId],
+    references: [workspace.id],
+  }),
+}));
+
+// AI Agent tables
+export * from "./schema/ai-agent";
+
+// Workflow and Command tables
+export * from "./schema/workflow";
+
+// Share tables
+export * from "./schema/share";

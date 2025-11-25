@@ -295,7 +295,7 @@ export function useIFlowChat(
    * 发送消息
    */
   const sendMessage = useCallback(
-    async (content: string) => {
+    async (content: string, agentId?: string) => {
       if (!content.trim()) {
         console.warn("[useIFlowChat] Empty message, ignoring");
         return;
@@ -353,6 +353,7 @@ export function useIFlowChat(
             message: content.trim(),
             modelName: currentConfig.modelName,
             permissionMode: currentConfig.permissionMode,
+            agentId,
           }),
           signal: abortControllerRef.current.signal,
         });

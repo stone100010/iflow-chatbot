@@ -3,6 +3,7 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/theme-provider";
+import { QueryClientProvider } from "@/components/providers/query-client-provider";
 
 import "./globals.css";
 import { SessionProvider } from "next-auth/react";
@@ -65,17 +66,19 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased">
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="system"
-          disableTransitionOnChange
-          enableSystem
-        >
-          <Toaster position="top-center" />
-          <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
-            {children}
-          </SessionProvider>
-        </ThemeProvider>
+        <QueryClientProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            disableTransitionOnChange
+            enableSystem
+          >
+            <Toaster position="top-center" />
+            <SessionProvider refetchInterval={0} refetchOnWindowFocus={false}>
+              {children}
+            </SessionProvider>
+          </ThemeProvider>
+        </QueryClientProvider>
       </body>
     </html>
   );

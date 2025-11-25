@@ -78,6 +78,48 @@
       "when": 1762618660182,
       "tag": "0010_regular_clint_barton",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1762935711167,
+      "tag": "0011_fluffy_liz_osborn",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1762937612948,
+      "tag": "0012_swift_wasp",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1762938000000,
+      "tag": "0013_seed_preset_agents",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1762950874908,
+      "tag": "0014_hot_wonder_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1762954790203,
+      "tag": "0015_wild_the_initiative",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1763087859958,
+      "tag": "0016_fearless_micromacro",
+      "breakpoints": true
     }
   ]
 }

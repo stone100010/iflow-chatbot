@@ -17,6 +17,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // 分享相关路由无需登录即可访问
+  if (pathname.startsWith("/share/") || pathname.startsWith("/api/shares/")) {
+    return NextResponse.next();
+  }
+
   const token = await getToken({
     req: request,
     secret: process.env.AUTH_SECRET,

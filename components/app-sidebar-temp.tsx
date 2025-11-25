@@ -33,7 +33,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import { MessageSquareIcon, ClockIcon, Trash2Icon, MoreVerticalIcon, PinIcon, Edit2Icon } from "lucide-react";
+import { MessageSquareIcon, ClockIcon, Trash2Icon, MoreVerticalIcon, PinIcon, Edit2Icon, BotIcon, WorkflowIcon, TerminalIcon } from "lucide-react";
 
 // 工作区历史类型
 interface WorkspaceHistory {
@@ -145,39 +145,94 @@ export function AppSidebarTemp({ user }: { user: User | undefined }) {
       <Sidebar className="group-data-[side=left]:border-r-0">
         <SidebarHeader>
           <SidebarMenu>
-            <div className="flex flex-row items-center justify-between">
-              <Link
-                className="flex flex-row items-center gap-3"
-                href="/"
-                onClick={() => {
-                  setOpenMobile(false);
-                }}
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
-                    <MessageSquareIcon className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+            <div className="flex flex-col gap-3">
+              {/* Logo and New Chat */}
+              <div className="flex flex-row items-center justify-between">
+                <Link
+                  className="flex flex-row items-center gap-3"
+                  href="/"
+                  onClick={() => {
+                    setOpenMobile(false);
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                      <MessageSquareIcon className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+                    </div>
+                    <span className="cursor-pointer font-semibold text-lg text-zinc-900 dark:text-zinc-100 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">
+                      iFlow Chat
+                    </span>
                   </div>
-                  <span className="cursor-pointer font-semibold text-lg text-zinc-900 dark:text-zinc-100 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors">
-                    iFlow Chat
-                  </span>
+                </Link>
+                <div className="flex flex-row gap-1">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        className="h-8 p-1 md:h-fit md:p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                        onClick={handleNewChat}
+                        type="button"
+                        variant="ghost"
+                      >
+                        <PlusIcon />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent align="end" className="hidden md:block">
+                      New Chat
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
-              </Link>
-              <div className="flex flex-row gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      className="h-8 p-1 md:h-fit md:p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-                      onClick={handleNewChat}
-                      type="button"
-                      variant="ghost"
-                    >
-                      <PlusIcon />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent align="end" className="hidden md:block">
-                    New Chat
-                  </TooltipContent>
-                </Tooltip>
+              </div>
+
+              {/* 智能体拓展 */}
+              <div className="flex flex-col gap-1">
+                <div className="px-2 py-1 text-xs font-semibold text-zinc-500 dark:text-zinc-400">
+                  智能体拓展
+                </div>
+                <Link
+                  href="/workflows"
+                  onClick={() => {
+                    setOpenMobile(false);
+                  }}
+                  className="w-full"
+                >
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start gap-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    <WorkflowIcon className="w-4 h-4" />
+                    <span>工作流</span>
+                  </Button>
+                </Link>
+                <Link
+                  href="/agents"
+                  onClick={() => {
+                    setOpenMobile(false);
+                  }}
+                  className="w-full"
+                >
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start gap-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    <BotIcon className="w-4 h-4" />
+                    <span>智能体</span>
+                  </Button>
+                </Link>
+                <Link
+                  href="/commands"
+                  onClick={() => {
+                    setOpenMobile(false);
+                  }}
+                  className="w-full"
+                >
+                  <Button
+                    variant="ghost"
+                    className="w-full justify-start gap-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+                  >
+                    <TerminalIcon className="w-4 h-4" />
+                    <span>指令</span>
+                  </Button>
+                </Link>
               </div>
             </div>
           </SidebarMenu>

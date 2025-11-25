@@ -13,6 +13,9 @@ import type { IFlowModel, IFlowPermissionMode } from "@/lib/iflow/types";
 import { isValidModel, isValidPermissionMode } from "@/lib/iflow/client";
 import { validateCsrfToken } from "@/lib/security/csrf";
 import { chatRateLimiter, createRateLimitResponse } from "@/lib/security/rate-limiter";
+import { db } from "@/lib/db";
+import { aiAgents } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 import {
   getIFlowMessageCountToday,
   saveIFlowMessage,
@@ -31,6 +34,7 @@ const chatRequestSchema = z.object({
   message: z.string().min(1).max(10000),
   modelName: z.string(),
   permissionMode: z.string(),
+  agentId: z.string().optional(),
 });
 
 /**
@@ -92,7 +96,9 @@ export async function POST(request: NextRequest) {
 
     // 2. CSRF 保护验证
     const csrfToken = request.headers.get("x-csrf-token");
-    if (!validateCsrfToken(csrfToken, userId)) {
+    const csrfValid = await validateCsrfToken(csrfToken, userId);
+
+    if (!csrfValid) {
       console.warn(`[Chat API] CSRF validation failed for user ${userId}`);
       return NextResponse.json(
         { error: "Invalid CSRF token" },
@@ -131,7 +137,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { workspaceId, message, modelName, permissionMode } = body;
+    const { workspaceId, message, modelName, permissionMode, agentId } = body;
 
     // 5. 验证模型和权限模式
     if (!isValidModel(modelName)) {
@@ -221,9 +227,47 @@ export async function POST(request: NextRequest) {
       // 检查是否是首次消息，如果是则带上历史上下文
       let messageToSend = message;
 
+      // If agent is selected, fetch and prepend system prompt
+      if (agentId) {
+        try {
+          const agent = await db.query.aiAgents.findFirst({
+            where: eq(aiAgents.id, agentId),
+          });
+
+          if (agent) {
+            // Check if user can access this agent
+            const canAccess =
+              agent.userId === userId ||
+              (agent.isPreset && agent.isPublic);
+
+            if (canAccess) {
+              // Prepend agent's system prompt to the message
+              messageToSend = `${agent.systemPrompt}\n\nUser: ${message}`;
+              console.log(`[Chat API] Using agent ${agent.name} (${agent.id})`);
+
+              // Record agent usage
+              await db
+                .update(aiAgents)
+                .set({
+                  usageCount: (agent.usageCount || 0) + 1,
+                  updatedAt: new Date(),
+                })
+                .where(eq(aiAgents.id, agentId));
+            } else {
+              console.warn(`[Chat API] User ${userId} cannot access agent ${agentId}`);
+            }
+          } else {
+            console.warn(`[Chat API] Agent ${agentId} not found`);
+          }
+        } catch (error) {
+          console.error("[Chat API] Error fetching agent:", error);
+          // Continue without agent if there's an error
+        }
+      }
+
       if (iflowSession.isFirstMessage && iflowSession.historyContext) {
         // 第一次发送消息时，带上历史上下文
-        messageToSend = iflowSession.historyContext + message;
+        messageToSend = iflowSession.historyContext + messageToSend;
         console.log(`[Chat API] First message with history context (${iflowSession.historyContext.length} chars)`);
 
         // 标记已发送首次消息

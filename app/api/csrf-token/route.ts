@@ -17,7 +17,7 @@ export async function GET() {
   }
 
   // 生成 CSRF token
-  const csrfToken = generateCsrfToken(session.user.id);
+  const csrfToken = await generateCsrfToken(session.user.id);
 
   return NextResponse.json({
     csrfToken,
